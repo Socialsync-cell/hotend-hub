@@ -424,3 +424,13 @@ ALTER TABLE orders
 UPDATE chat_settings
 SET ai_model='gpt-6.1-sol', updated_at=NOW()
 WHERE id=1 AND ai_model<>'gpt-6.1-sol';
+
+
+-- Seed editable side-tab label for existing Hotend signup popup
+UPDATE popups
+SET targeting = COALESCE(targeting,'{}'::jsonb) || jsonb_build_object(
+  'side_tab_text',
+  COALESCE(NULLIF(targeting->>'side_tab_text',''), headline, 'Hotend offer')
+)
+WHERE popup_type='NEWSLETTER'
+  AND name='Hotend signup offer';
