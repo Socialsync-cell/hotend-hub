@@ -213,6 +213,16 @@ export async function sendWelcomeStory(customerId){
 export async function sendSignupDiscountEmail({customerId=null,to,firstName='',discountCode,popupName=''}) {
   const code=String(discountCode||'').trim();
   if(!code)return {ok:false,skipped:'no_discount_code'};
+
+  const recipient=String(to||'').trim().toLowerCase();
+  const already=(await q(`SELECT id,status FROM email_deliveries
+    WHERE LOWER(recipient)=LOWER($1)
+      AND email_type='SIGNUP_DISCOUNT'
+      AND status IN ('QUEUED','SENT')
+    ORDER BY id DESC
+    LIMIT 1`,[recipient])).rows[0];
+  if(already)return {ok:true,skipped:'already_sent',deliveryId:already.id};
+
   const name=esc(firstName||'there');
   const subject='Your Hotend discount code';
   const html=wrapHotendEmail(`
@@ -232,6 +242,32 @@ export async function sendSignupDiscountEmail({customerId=null,to,firstName='',d
     subject,
     html,
     metadata:{automation:'popup-signup',popup_name:popupName,discount_code:code}
+  });
+}
+
+export async function sendSignupOwnerNotification({customerId=null,email,firstName='',lastName='',popupName=''}) {
+  const notifyTo=String(process.env.SIGNUP_NOTIFY_EMAIL||process.env.EMAIL_REPLY_TO||'info@hotend.co.nz').trim();
+  if(!notifyTo)return {ok:false,skipped:'notification_email_missing'};
+
+  const fullName=[firstName,lastName].filter(Boolean).join(' ').trim()||'New subscriber';
+  const subject='New Hotend signup — '+fullName;
+  const html=wrapHotendEmail(`
+    <div style="font-size:21px;font-weight:800;margin-bottom:12px">New website signup</div>
+    <div style="font-size:13px;line-height:1.7;color:#526663">
+      <strong>Name:</strong> ${esc(fullName)}<br>
+      <strong>Email:</strong> ${esc(email)}<br>
+      <strong>Popup:</strong> ${esc(popupName||'Hotend signup offer')}<br>
+      <strong>Time:</strong> ${esc(new Date().toLocaleString('en-NZ',{timeZone:'Pacific/Auckland'}))}
+    </div>
+  `);
+
+  return sendEmail({
+    customerId,
+    emailType:'SIGNUP_OWNER_NOTIFICATION',
+    to:notifyTo,
+    subject,
+    html,
+    metadata:{automation:'popup-signup-owner',subscriber_email:String(email||'').toLowerCase(),popup_name:popupName}
   });
 }
 
