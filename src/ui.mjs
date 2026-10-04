@@ -156,7 +156,7 @@ export async function popupsPage({popups=[],message=''}) {
         <label class="wide">Headline<input name="headline" value="${esc(p.headline||'')}" required></label>
         <label class="wide">Message<textarea name="body_text">${esc(p.body_text||'')}</textarea></label>
         <label>Button text<input name="cta_text" value="${esc(p.cta_text||'')}"></label>
-        <label>Side tab text<input name="side_tab_text" value="${esc(p.targeting?.side_tab_text||'Hotend offer')}" placeholder="e.g. Get 10% off"></label>
+        <label>Side tab text<input name="side_tab_text" value="${esc(p.targeting?.side_tab_text||p.headline||'Hotend offer')}" placeholder="e.g. Get 10% off"></label>
         <label>Promo code<input name="discount_code" value="${esc(p.discount_code||'')}" placeholder="Enter your valid Shopify discount code"></label>
         <label>Logo / image URL<input name="image_url" value="${esc(p.image_url||logo)}"></label>
         <label>Button URL<input name="cta_url" value="${esc(p.cta_url||'')}"></label>
