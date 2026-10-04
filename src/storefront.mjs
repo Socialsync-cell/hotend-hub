@@ -1,5 +1,5 @@
 function hotendHubClient(){
-  const CLIENT_VERSION='20261004-chat11';
+  const CLIENT_VERSION='20261004-chat12';
   const existingVersion=String(window.__HOTEND_HUB_VERSION__||'');
   if(window.__HOTEND_HUB__&&existingVersion===CLIENT_VERSION)return;
   if(window.__HOTEND_HUB__&&existingVersion!==CLIENT_VERSION){
@@ -314,6 +314,7 @@ function hotendHubClient(){
         if(note)note.style.display='none';
         sessionStorage.setItem(nameKey,name);
         sessionStorage.setItem(emailKey,email);
+        localStorage.setItem('hh_known_email',email);
         sessionStorage.setItem('hh_chat_marketing_opt_in',opt?'1':'0');
         showConversation();
         showThread(data.messages||[],{force:true});
@@ -490,6 +491,7 @@ function hotendHubClient(){
           }).then(r=>r.json());
           result.textContent=response.message||'Thanks!';
           if(response.subscribed){
+            localStorage.setItem('hh_known_email',email);
             sessionStorage.setItem('hh_popup_closed_'+p.id,'1');
             if(response.discount_code&&!response.discount_email_sent){
               result.textContent+='\nCode: '+response.discount_code;
@@ -508,6 +510,71 @@ function hotendHubClient(){
 
       document.body.append(overlay,tab);
     }catch(e){}
+  }
+
+  function storefrontCartTracker(){
+    const visitorKey='hh_cart_visitor_id';
+    let visitorId=localStorage.getItem(visitorKey)||'';
+    if(!visitorId){
+      visitorId='HHC-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,9).toUpperCase();
+      localStorage.setItem(visitorKey,visitorId);
+    }
+
+    let lastSignature='';
+    let busy=false;
+
+    const knownEmail=()=>String(localStorage.getItem('hh_known_email')||sessionStorage.getItem('hh_chat_email')||'').trim().toLowerCase();
+
+    const sync=async()=>{
+      if(busy)return;
+      busy=true;
+      try{
+        const cart=await fetch('/cart.js',{credentials:'same-origin',cache:'no-store'}).then(r=>r.json());
+        const items=(cart.items||[]).map(x=>({
+          id:x.id||null,
+          title:x.product_title||x.title||'Product',
+          variantTitle:x.variant_title||null,
+          sku:x.sku||null,
+          quantity:Number(x.quantity||1),
+          productId:x.product_id||null,
+          variantId:x.variant_id||null,
+          imageUrl:x.image||x.featured_image?.url||null,
+          unitPrice:Number(x.final_price||x.price||0)/100,
+          currency:cart.currency||'NZD'
+        }));
+
+        const payload={
+          visitor_id:visitorId,
+          email:knownEmail()||null,
+          currency:cart.currency||'NZD',
+          total_price:Number(cart.total_price||0)/100,
+          item_count:Number(cart.item_count||0),
+          line_items:items,
+          cart_url:location.origin+'/cart'
+        };
+        const signature=JSON.stringify([payload.email,payload.total_price,payload.item_count,items.map(x=>[x.variantId,x.quantity])]);
+        if(signature===lastSignature)return;
+
+        await fetch(proxy+'/cart-track',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload),
+          keepalive:true
+        });
+        lastSignature=signature;
+      }catch(e){}
+      finally{busy=false;}
+    };
+
+    sync();
+    setInterval(sync,30000);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sync();});
+    window.addEventListener('pageshow',sync);
+    document.addEventListener('click',e=>{
+      if(e.target?.closest?.('button[name="add"],form[action*="/cart/add"],button[data-add-to-cart],.product-form__submit')){
+        setTimeout(sync,900);
+      }
+    },true);
   }
 
   function trackingDeliveredDatePatch(){
@@ -572,7 +639,7 @@ function hotendHubClient(){
     });
   }
 
-  const start=()=>{productReviews();chat();popup();trackingDeliveredDatePatch();};
+  const start=()=>{productReviews();chat();popup();storefrontCartTracker();trackingDeliveredDatePatch();};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);
   else start();
 }
