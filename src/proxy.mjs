@@ -409,7 +409,7 @@ export async function proxySubscribe(req,url,readBody){
     discount_email_sent:!!emailResult.ok&&!codeAlreadySent,
     discount_already_sent:codeAlreadySent,
     message:codeAlreadySent
-      ? 'Thanks for subscribing. Your signup discount was already sent to this email previously.'
+      ? 'You’re already on the Hotend list 😊 We sent your welcome discount to this email before, so there’s nothing else you need to do. Keep an eye on your inbox for future Hotend offers and new releases.'
       : (discountCode
           ? (emailResult.ok?'Thanks for subscribing. Your discount code has been emailed to you.':'Thanks for subscribing.')
           : 'Thanks for subscribing to Hotend.')
