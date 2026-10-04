@@ -1,5 +1,5 @@
 function hotendHubClient(){
-  const CLIENT_VERSION='20261004-chat9';
+  const CLIENT_VERSION='20261004-chat10';
   const existingVersion=String(window.__HOTEND_HUB_VERSION__||'');
   if(window.__HOTEND_HUB__&&existingVersion===CLIENT_VERSION)return;
   if(window.__HOTEND_HUB__&&existingVersion!==CLIENT_VERSION){
@@ -441,7 +441,7 @@ function hotendHubClient(){
       const tab=document.createElement('button');
       tab.className='hh-popup-tab';
       tab.type='button';
-      tab.textContent=String(p.targeting?.side_tab_text||'').trim()||(p.discount_code?'Get '+(p.headline||'your offer'):'Hotend offers');
+      tab.textContent=String(p.targeting?.side_tab_text||'').trim()||String(p.headline||'').trim()||'Hotend offers';
       tab.style.display=overlay.style.display==='none'?'block':'none';
 
       const dock=()=>{
