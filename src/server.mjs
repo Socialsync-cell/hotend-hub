@@ -3,11 +3,11 @@ import {migrate} from './db.mjs';
 import {dashboard,setupPage,marketingPage} from './ui.mjs';
 import {testShopify,buildOAuthUrl,validOAuthCallback,exchangeCode,registerHotendHubStorefront,cleanupHotendHubScriptTags,registerHotendHubWebhooks,getGrantedAccessScopes,setCustomerEmailMarketingState} from './shopify.mjs';
 import {syncShopifyCore,backfillEmailProductImages,backfillCustomerPhones,backfillOrderPhones,backfillShippingMethods} from './sync.mjs';
-import {verifyShopifyProxy,proxyReviews,proxyTracking,proxyConfig,proxyChat,proxySubscribe,proxySubmitReview} from './proxy.mjs';
+import {verifyShopifyProxy,proxyReviews,proxyTracking,proxyConfig,proxyChat,proxySubscribe,proxySubmitReview,proxyCartTrack} from './proxy.mjs';
 import {storefrontScript} from './storefront.mjs';
 import {processShopifyWebhook} from './webhooks.mjs';
 import {emailConfigStatus,recentEmailDeliveries,emailPreviewHtml} from './email.mjs';
-import {syncAbandonedCheckouts,processDueAbandonedEmails,abandonedStats} from './abandoned.mjs';
+import {syncAbandonedCheckouts,processDueAbandonedEmails,processDueStorefrontCartEmails,abandonedStats} from './abandoned.mjs';
 import {renderReviewForm,submitReviewForm,processDueReviewRequests,reviewAutomationStats,renderReviewStartPage,beginVerifiedProductReview,getReviewPhoto} from './reviews.mjs';
 import {createCampaign,listCampaigns,queueCampaign,sendCampaignTest,processCampaignQueue} from './campaigns.mjs';
 import {listPopups,updatePopup,togglePopup,deletePopup} from './popups.mjs';
@@ -33,12 +33,16 @@ setInterval(async()=>{
     const abandoned=abandonedRule?.enabled
       ? (await syncAbandonedCheckouts(), await processDueAbandonedEmails(50))
       : {sent:0,failed:0};
+    const storefrontCarts=abandonedRule?.enabled
+      ? await processDueStorefrontCartEmails(50)
+      : {sent:0,failed:0};
     const reviews=reviewRule?.enabled
       ? await processDueReviewRequests(50)
       : {sent:0,failed:0};
     const campaigns=await processCampaignQueue(30);
     const nzpost=await registerMissingNzPostWatches(100);
     if(abandoned.sent||abandoned.failed)console.log('Abandoned checkout processor',abandoned);
+    if(storefrontCarts.sent||storefrontCarts.failed)console.log('Storefront abandoned cart processor',storefrontCarts);
     if(reviews.sent||reviews.failed)console.log('Review request processor',reviews);
     if(campaigns.sent||campaigns.failed)console.log('Campaign processor',campaigns);
     if(nzpost.registered||nzpost.failed)console.log('NZ Post watch registration',nzpost);
@@ -265,6 +269,7 @@ http.createServer(async(req,res)=>{
     else if(url.pathname==='/proxy/tracking')result=await proxyTracking(url);
     else if(url.pathname==='/proxy/chat')result=await proxyChat(req,url,readBody);
     else if(url.pathname==='/proxy/subscribe')result=await proxySubscribe(req,url,readBody);
+    else if(url.pathname==='/proxy/cart-track')result=await proxyCartTrack(req,url,readBody);
     else return send(res,404,{ok:false,message:'Proxy route not found'});
     res.writeHead(result.status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
     return res.end(JSON.stringify(result.body));
