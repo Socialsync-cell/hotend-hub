@@ -6,6 +6,7 @@ import {sendSignupDiscountEmail,sendSignupOwnerNotification} from './email.mjs';
 import {getChatSettings,generateAiReply,chatIntegrationStatus} from './ai_chat.mjs';
 import {sendStaffChatMessage} from './whatsapp.mjs';
 import {submitDirectProductReview} from './reviews.mjs';
+import {recordStorefrontCart} from './abandoned.mjs';
 
 export function verifyShopifyProxy(url){
   const secret=process.env.SHOPIFY_CLIENT_SECRET||'';
@@ -415,6 +416,20 @@ export async function proxySubscribe(req,url,readBody){
   }};
 }
 
+
+export async function proxyCartTrack(req,url,readBody){
+  if(req.method!=='POST')return {status:405,body:{ok:false,message:'Method not allowed'}};
+  const raw=(await readBody(req,256*1024)).toString('utf8');
+  let data={};
+  try{data=JSON.parse(raw||'{}')}catch{return {status:400,body:{ok:false,message:'Invalid cart data'}};}
+  try{
+    const result=await recordStorefrontCart(data);
+    return {status:result.ok?200:400,body:result};
+  }catch(e){
+    console.error('Storefront cart tracking failed:',e.message);
+    return {status:500,body:{ok:false,message:'Unable to track cart'}};
+  }
+}
 
 export async function proxySubmitReview(req,url,readBody){
   if(req.method!=='POST')return {status:405,body:{ok:false,message:'Method not allowed'}};
