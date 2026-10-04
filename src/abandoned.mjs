@@ -41,6 +41,18 @@ export async function syncAbandonedCheckouts(){
         ]);
       const checkoutId=saved.rows[0].id;
       stats.checkouts++;
+
+      if(email){
+        const carts=(await q(`UPDATE storefront_carts
+          SET recovered=TRUE,recovery_reason='CHECKOUT_STARTED',updated_at=NOW()
+          WHERE recovered=FALSE AND LOWER(email)=LOWER($1)
+          RETURNING id`,[email])).rows;
+        for(const cart of carts){
+          await q(`UPDATE storefront_cart_steps
+            SET status='CANCELLED',cancelled_at=NOW()
+            WHERE storefront_cart_id=$1 AND status='PENDING'`,[cart.id]);
+        }
+      }
       if(a.completedAt){
         await q(`UPDATE abandoned_checkout_steps SET status='CANCELLED',cancelled_at=NOW()
           WHERE abandoned_checkout_id=$1 AND status='PENDING'`,[checkoutId]);
@@ -178,6 +190,133 @@ export async function processDueAbandonedEmails(limit=25){
       if(providerBlocked){
         await q(`UPDATE abandoned_checkout_steps SET status='PAUSED' WHERE id=$1`,[row.step_id]);
       }
+      out.failed++;
+    }
+  }
+  return out;
+}
+
+export async function recordStorefrontCart(data={}){
+  const visitorId=String(data.visitor_id||'').trim().slice(0,120);
+  if(!visitorId)return {ok:false,message:'visitor_id required'};
+
+  const email=String(data.email||'').trim().toLowerCase()||null;
+  const currency=String(data.currency||'NZD').trim().slice(0,12)||'NZD';
+  const totalPrice=Math.max(0,Number(data.total_price||0));
+  const itemCount=Math.max(0,Number(data.item_count||0));
+  const items=Array.isArray(data.line_items)?data.line_items.slice(0,100):[];
+  const cartUrl=String(data.cart_url||'https://hotend.co.nz/cart').trim().slice(0,1000);
+
+  let customerId=null;
+  if(email){
+    customerId=(await q(`SELECT id FROM customers WHERE LOWER(email)=LOWER($1) LIMIT 1`,[email])).rows[0]?.id||null;
+  }
+
+  const saved=(await q(`INSERT INTO storefront_carts(
+      visitor_id,customer_id,email,currency,total_price,item_count,line_items,cart_url,
+      first_seen_at,last_seen_at,emptied_at,recovered,recovery_reason,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,NOW(),NOW(),
+      CASE WHEN $6=0 THEN NOW() ELSE NULL END,
+      CASE WHEN $6=0 THEN TRUE ELSE FALSE END,
+      CASE WHEN $6=0 THEN 'CART_EMPTIED' ELSE NULL END,
+      NOW())
+    ON CONFLICT(visitor_id) DO UPDATE SET
+      customer_id=COALESCE(EXCLUDED.customer_id,storefront_carts.customer_id),
+      email=COALESCE(EXCLUDED.email,storefront_carts.email),
+      currency=EXCLUDED.currency,
+      total_price=EXCLUDED.total_price,
+      item_count=EXCLUDED.item_count,
+      line_items=EXCLUDED.line_items,
+      cart_url=EXCLUDED.cart_url,
+      last_seen_at=NOW(),
+      emptied_at=CASE WHEN EXCLUDED.item_count=0 THEN NOW() ELSE NULL END,
+      recovered=CASE WHEN EXCLUDED.item_count=0 THEN TRUE ELSE FALSE END,
+      recovery_reason=CASE WHEN EXCLUDED.item_count=0 THEN 'CART_EMPTIED' ELSE NULL END,
+      updated_at=NOW()
+    RETURNING *`,[
+      visitorId,customerId,email,currency,totalPrice,itemCount,JSON.stringify(items),cartUrl
+    ])).rows[0];
+
+  if(itemCount===0){
+    await q(`UPDATE storefront_cart_steps
+      SET status='CANCELLED',cancelled_at=NOW()
+      WHERE storefront_cart_id=$1 AND status='PENDING'`,[saved.id]);
+    return {ok:true,recovered:true};
+  }
+
+  const rule=await automationRule('abandoned-cart');
+  const idleMinutes=Math.max(15,Number(rule?.config?.cart_idle_minutes||120));
+  const configured=Array.isArray(rule?.config?.delays_days)?rule.config.delays_days:[1,5,10];
+  const delays=configured.slice(0,3).map((x,i)=>[i+1,Math.max(0,Number(x)||0)]);
+
+  if(saved.email){
+    for(const [step,days] of delays){
+      const due=new Date(Date.now()+idleMinutes*60000+days*86400000);
+      await q(`INSERT INTO storefront_cart_steps(storefront_cart_id,step_number,due_at)
+        VALUES($1,$2,$3)
+        ON CONFLICT(storefront_cart_id,step_number) DO UPDATE SET
+          due_at=CASE WHEN storefront_cart_steps.status='PENDING' THEN EXCLUDED.due_at ELSE storefront_cart_steps.due_at END`,
+        [saved.id,step,due]);
+    }
+  }
+
+  return {ok:true,recovered:false,tracked:true};
+}
+
+export async function processDueStorefrontCartEmails(limit=25){
+  const due=(await q(`SELECT s.id step_id,s.step_number,c.*,cu.marketing_status,cu.first_name,cu.id customer_id_resolved
+    FROM storefront_cart_steps s
+    JOIN storefront_carts c ON c.id=s.storefront_cart_id
+    LEFT JOIN customers cu ON cu.id=c.customer_id
+    WHERE s.status='PENDING'
+      AND s.due_at<=NOW()
+      AND c.recovered=FALSE
+      AND c.item_count>0
+    ORDER BY s.due_at ASC
+    LIMIT $1`,[Math.max(1,Math.min(100,Number(limit)||25))])).rows;
+
+  const out={checked:due.length,sent:0,skipped:0,failed:0};
+  for(const row of due){
+    if(!row.email||row.marketing_status!=='SUBSCRIBED'){
+      await q(`UPDATE storefront_cart_steps SET status='CANCELLED',cancelled_at=NOW() WHERE id=$1`,[row.step_id]);
+      out.skipped++;
+      continue;
+    }
+
+    const step=Number(row.step_number);
+    const items=Array.isArray(row.line_items)?row.line_items:[];
+    const itemHtml=itemTableHtml(items);
+    const copy=abandonedCopy(step);
+    const rendered=await renderAutomationEmail('abandoned-cart',{
+      fallbackSubject:subjectFor(step),
+      fallbackHtml:htmlFor({customer_first_name:row.first_name||'there',line_items:items,recovery_url:row.cart_url||'https://hotend.co.nz/cart'},step),
+      vars:{
+        first_name:esc(row.first_name||'there'),
+        step_subject:subjectFor(step),
+        heading:esc(copy.heading),
+        intro:esc(copy.intro),
+        items_html:itemHtml,
+        recovery_url:esc(row.cart_url||'https://hotend.co.nz/cart'),
+        brand_header:brandEmailHeader(),
+        step:String(step)
+      }
+    });
+
+    const result=await sendEmail({
+      customerId:row.customer_id_resolved||row.customer_id||null,
+      emailType:`ABANDONED_CART_${step}`,
+      to:row.email,
+      subject:rendered.subject,
+      html:rendered.html,
+      metadata:{automation:'abandoned-cart',source:'storefront-cart',visitor_id:row.visitor_id,step}
+    });
+
+    if(result.ok){
+      await q(`UPDATE storefront_cart_steps
+        SET status='SENT',email_delivery_id=$2,sent_at=NOW()
+        WHERE id=$1`,[row.step_id,result.deliveryId]);
+      out.sent++;
+    }else{
       out.failed++;
     }
   }
