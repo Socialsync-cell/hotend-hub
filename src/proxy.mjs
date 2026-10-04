@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {closeChatNowByReference} from './chat_lifecycle.mjs';
 import {q} from './db.mjs';
 import {subscribeMarketingCustomer} from './shopify.mjs';
-import {sendSignupDiscountEmail} from './email.mjs';
+import {sendSignupDiscountEmail,sendSignupOwnerNotification} from './email.mjs';
 import {getChatSettings,generateAiReply,chatIntegrationStatus} from './ai_chat.mjs';
 import {sendStaffChatMessage} from './whatsapp.mjs';
 import {submitDirectProductReview} from './reviews.mjs';
@@ -384,14 +384,34 @@ export async function proxySubscribe(req,url,readBody){
     });
   }
 
+  setImmediate(async()=>{
+    try{
+      const ownerNotice=await sendSignupOwnerNotification({
+        customerId:up.id,
+        email,
+        firstName,
+        lastName,
+        popupName:popup?.name||''
+      });
+      if(!ownerNotice.ok)console.error('Signup owner notification failed:',ownerNotice.error||ownerNotice.skipped||'unknown');
+    }catch(e){
+      console.error('Signup owner notification failed:',e.message);
+    }
+  });
+
+  const codeAlreadySent=emailResult.skipped==='already_sent';
+
   return {status:200,body:{
     ok:true,
     subscribed:true,
-    discount_code:discountCode||null,
-    discount_email_sent:!!emailResult.ok,
-    message:discountCode
-      ? (emailResult.ok?'Thanks for subscribing. Your discount code has been emailed to you.':'Thanks for subscribing. Your discount code is '+discountCode+'.')
-      : 'Thanks for subscribing to Hotend.'
+    discount_code:codeAlreadySent?null:(discountCode||null),
+    discount_email_sent:!!emailResult.ok&&!codeAlreadySent,
+    discount_already_sent:codeAlreadySent,
+    message:codeAlreadySent
+      ? 'Thanks for subscribing. Your signup discount was already sent to this email previously.'
+      : (discountCode
+          ? (emailResult.ok?'Thanks for subscribing. Your discount code has been emailed to you.':'Thanks for subscribing.')
+          : 'Thanks for subscribing to Hotend.')
   }};
 }
 
