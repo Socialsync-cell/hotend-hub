@@ -434,3 +434,48 @@ SET targeting = COALESCE(targeting,'{}'::jsonb) || jsonb_build_object(
 )
 WHERE popup_type='NEWSLETTER'
   AND name='Hotend signup offer';
+
+
+-- Storefront cart tracking before Shopify checkout begins
+CREATE TABLE IF NOT EXISTS storefront_carts (
+  id BIGSERIAL PRIMARY KEY,
+  visitor_id TEXT UNIQUE NOT NULL,
+  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  email TEXT,
+  currency TEXT,
+  total_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  item_count INTEGER NOT NULL DEFAULT 0,
+  line_items JSONB NOT NULL DEFAULT '[]',
+  cart_url TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  emptied_at TIMESTAMPTZ,
+  recovered BOOLEAN NOT NULL DEFAULT FALSE,
+  recovery_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS storefront_carts_open_idx
+  ON storefront_carts(recovered,last_seen_at);
+
+CREATE TABLE IF NOT EXISTS storefront_cart_steps (
+  id BIGSERIAL PRIMARY KEY,
+  storefront_cart_id BIGINT NOT NULL REFERENCES storefront_carts(id) ON DELETE CASCADE,
+  step_number INTEGER NOT NULL CHECK(step_number BETWEEN 1 AND 3),
+  due_at TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  email_delivery_id BIGINT REFERENCES email_deliveries(id) ON DELETE SET NULL,
+  sent_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(storefront_cart_id,step_number)
+);
+
+CREATE INDEX IF NOT EXISTS storefront_cart_steps_due_idx
+  ON storefront_cart_steps(status,due_at);
+
+UPDATE automation_rules
+SET config = config || '{"cart_idle_minutes":120}'::jsonb
+WHERE key='abandoned-cart'
+  AND NOT (config ? 'cart_idle_minutes');
