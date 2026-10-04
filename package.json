@@ -1,0 +1,17 @@
+{
+  "name": "hotend-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "puppeteer-core": "^24.24.1",
+    "@sparticuz/chromium": "^141.0.0"
+  }
+}
