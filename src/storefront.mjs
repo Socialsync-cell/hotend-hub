@@ -496,7 +496,8 @@ function hotendHubClient(){
             if(response.discount_code&&!response.discount_email_sent){
               result.textContent+='\nCode: '+response.discount_code;
             }
-            setTimeout(()=>{overlay.remove();tab.remove();},2600);
+            const holdMs=response.discount_already_sent?5000:2600;
+            setTimeout(()=>{overlay.remove();tab.remove();},holdMs);
           }else{
             submit.disabled=false;
             submit.textContent=p.cta_text||'Claim discount';
