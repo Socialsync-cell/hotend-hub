@@ -1,5 +1,5 @@
 function hotendHubClient(){
-  const CLIENT_VERSION='20261004-chat10';
+  const CLIENT_VERSION='20261004-chat11';
   const existingVersion=String(window.__HOTEND_HUB_VERSION__||'');
   if(window.__HOTEND_HUB__&&existingVersion===CLIENT_VERSION)return;
   if(window.__HOTEND_HUB__&&existingVersion!==CLIENT_VERSION){
@@ -389,8 +389,18 @@ function hotendHubClient(){
 
   async function popup(){
     try{
-      if(localStorage.getItem('hh_marketing_subscribed')==='1')return;
-      const data=await fetch(proxy+'/config').then(r=>r.json());
+      const signedIn=await (async()=>{
+        try{
+          const r=await fetch('/account',{credentials:'same-origin',redirect:'follow',cache:'no-store'});
+          const u=new URL(r.url,location.origin);
+          return r.ok&&!/\/account\/(login|register)/.test(u.pathname);
+        }catch(e){
+          return false;
+        }
+      })();
+      if(signedIn)return;
+
+      const data=await fetch(proxy+'/config',{cache:'no-store'}).then(r=>r.json());
       const p=(data?.popups||[]).find(x=>String(x.popup_type||'').toUpperCase()==='NEWSLETTER')||data?.popups?.[0];
       if(!p)return;
 
@@ -480,8 +490,7 @@ function hotendHubClient(){
           }).then(r=>r.json());
           result.textContent=response.message||'Thanks!';
           if(response.subscribed){
-            localStorage.setItem('hh_marketing_subscribed','1');
-            sessionStorage.removeItem('hh_popup_closed_'+p.id);
+            sessionStorage.setItem('hh_popup_closed_'+p.id,'1');
             if(response.discount_code&&!response.discount_email_sent){
               result.textContent+='\nCode: '+response.discount_code;
             }
