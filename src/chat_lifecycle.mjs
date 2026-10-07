@@ -1,5 +1,5 @@
 import {q} from './db.mjs';
-import {sendEmail,brandEmailHeader} from './email.mjs';
+import {sendEmail,brandEmailHeader,wrapHotendEmail} from './email.mjs';
 import {renderAutomationEmail,automationRule} from './automations.mjs';
 
 function esc(v){
@@ -26,16 +26,14 @@ async function sendTranscript(sessionId){
     </div>`;
   }).join('');
 
-  const html=`<!doctype html><html><body style="margin:0;background:#fffcf7;font-family:Arial,sans-serif;color:#172033">
-    <div style="max-width:680px;margin:0 auto;padding:28px 18px">
-      ${brandEmailHeader()}
-      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;margin-top:16px">
-        <h1 style="margin-top:0;color:#0b2748">Your Hotend chat transcript</h1>
-        <p>Hi ${esc(session.first_name||'there')}, here is a copy of your recent support conversation.</p>
-        <div style="margin-top:18px">${rows}</div>
-      </div>
+  const html=wrapHotendEmail(`
+    <div style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:9px">Your Hotend chat transcript</div>
+    <div style="color:#657d7a;font-size:12px;line-height:1.65;margin-bottom:16px">Hi ${esc(session.first_name||'there')}, here is a copy of your recent support conversation.</div>
+    <div style="background:#f5f7f7;border:1px solid #d7dfdf;border-left:5px solid #3fc2c2;padding:12px 14px">
+      <div style="color:#1c3a52;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.45px;margin-bottom:6px">Conversation</div>
+      ${rows}
     </div>
-  </body></html>`;
+  `);
 
   const rendered=await renderAutomationEmail('chat-transcript',{
     fallbackSubject:'Your Hotend support chat transcript',

@@ -1,10 +1,18 @@
 import {q} from './db.mjs';
 import {abandonedCheckoutPages} from './shopify.mjs';
-import {sendEmail,brandEmailHeader} from './email.mjs';
+import {sendEmail,brandEmailHeader,wrapHotendEmail} from './email.mjs';
 import {automationRule,renderAutomationEmail} from './automations.mjs';
 
 function num(v){const n=Number(v);return Number.isFinite(n)?n:0;}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function normalizeEmailImageUrl(value){
+  let url=String(value??'').trim();
+  if(!url)return '';
+  if(url.startsWith('//'))return 'https:'+url;
+  if(url.startsWith('/'))return 'https://hotend.co.nz'+url;
+  if(/^http:\/\//i.test(url))return 'https://'+url.slice(7);
+  return /^https:\/\//i.test(url)?url:'';
+}
 
 export async function syncAbandonedCheckouts(){
   const stats={checkouts:0,scheduled:0,recovered:0};
@@ -77,29 +85,23 @@ export async function syncAbandonedCheckouts(){
 }
 
 function itemTableHtml(items){
-  const rows=(items||[]).slice(0,12).map(x=>`
-    <tr>
-      <td valign="top" style="width:23%;padding:10px;border-bottom:1px solid #dce4e3;color:#1c3a52;font-size:9px;font-weight:600;line-height:1.35;word-break:break-word">${esc(x.sku||'-')}</td>
-      <td valign="top" style="width:62%;padding:8px;border-bottom:1px solid #dce4e3">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          ${x.imageUrl?`<td width="58" valign="top" style="width:58px;padding-right:8px"><img src="${esc(x.imageUrl)}" width="50" alt="${esc(x.title||'Product')}" style="display:block;width:50px;height:50px;object-fit:cover;border:1px solid #e1e7e6;border-radius:5px"></td>`:''}
-          <td valign="top">
-            <div style="color:#1c3a52;font-size:10px;font-weight:700;line-height:1.35">${esc(x.title||'Product')}</div>
-            ${x.variantTitle?`<div style="color:#3fc2c2;font-size:8px;line-height:1.35;margin-top:3px">${esc(x.variantTitle)}</div>`:''}
-          </td>
-        </tr></table>
-      </td>
-      <td valign="top" align="center" style="width:15%;padding:10px 5px;border-bottom:1px solid #dce4e3;color:#1c3a52;font-size:11px;font-weight:800;text-align:center">${Number(x.quantity||1)}</td>
-    </tr>`).join('');
-  if(!rows)return '';
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;table-layout:fixed">
-    <tr>
-      <td style="width:23%;background:#1c3a52;color:#fff;padding:10px;font-size:8px;font-weight:700;text-transform:uppercase">SKU</td>
-      <td style="width:62%;background:#1c3a52;color:#fff;padding:10px;font-size:8px;font-weight:700;text-transform:uppercase">Product</td>
-      <td align="center" style="width:15%;background:#1c3a52;color:#fff;padding:10px 5px;font-size:8px;font-weight:700;text-transform:uppercase;text-align:center">Qty</td>
-    </tr>
-    ${rows}
-  </table>`;
+  return (items||[]).slice(0,12).map(x=>{
+    const imageUrl=normalizeEmailImageUrl(x.imageUrl);
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;margin:10px 0;background:#ffffff">
+      <tr>
+        ${imageUrl?`<td width="78" valign="middle" style="width:78px;padding:10px"><img src="${esc(imageUrl)}" width="58" height="58" alt="${esc(x.title||'Product')}" style="display:block;width:58px;height:58px;object-fit:cover;border:1px solid #e1e7e6;border-radius:6px;background:#f7f9f9"></td>`:''}
+        <td valign="middle" style="padding:12px ${imageUrl?'8px 12px 2px':'12px'}">
+          <div style="color:#1c3a52;font-size:11px;font-weight:800;line-height:1.35">${esc(x.title||'Product')}</div>
+          ${x.variantTitle?`<div style="color:#20aeb3;font-size:8px;font-weight:700;line-height:1.35;margin-top:4px">${esc(x.variantTitle)}</div>`:''}
+          <div style="color:#7c9088;font-size:8px;line-height:1.35;margin-top:5px">SKU: ${esc(x.sku||'-')}</div>
+        </td>
+        <td width="52" valign="middle" align="center" style="width:52px;padding:10px;color:#1c3a52">
+          <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:#7c9088">Qty</div>
+          <div style="font-size:13px;font-weight:900;margin-top:4px">${Number(x.quantity||1)}</div>
+        </td>
+      </tr>
+    </table>`;
+  }).join('');
 }
 
 function subjectFor(step){
@@ -127,18 +129,13 @@ function htmlFor(row,step){
   const items=Array.isArray(row.line_items)?row.line_items:[];
   const itemHtml=itemTableHtml(items);
   const copy=abandonedCopy(step);
-  const intro=copy.intro;
-  return `<!doctype html><html><body style="margin:0;background:#fffcf7;font-family:Arial,sans-serif;color:#172033">
-  <div style="max-width:640px;margin:auto;padding:28px 18px">
-    ${brandEmailHeader()}
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px;margin-top:16px">
-      <h1 style="color:#0b2748;margin-top:0">Hi ${esc(row.customer_first_name||'there')},</h1>
-      <p>${intro}</p>
-      ${itemHtml}
-      <p style="margin:26px 0"><a href="${esc(row.recovery_url||'https://hotend.co.nz/cart')}" style="background:#f5b51b;color:#0b2748;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;display:inline-block">Return to your checkout</a></p>
-      <p style="font-size:13px;color:#667085">If you already completed your order, you can ignore this email.</p>
-    </div>
-  </div></body></html>`;
+  return wrapHotendEmail(`
+    <div style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:9px">${esc(copy.heading)}</div>
+    <div style="color:#657d7a;font-size:12px;line-height:1.65;margin-bottom:16px">Hi ${esc(row.customer_first_name||'there')}, ${esc(copy.intro)}</div>
+    ${itemHtml}
+    <p style="margin:24px 0;text-align:center"><a href="${esc(row.recovery_url||'https://hotend.co.nz/cart')}" style="display:inline-block;background:#1c3a52;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.5px">RETURN TO YOUR CHECKOUT</a></p>
+    <div style="color:#718581;font-size:9px;line-height:1.55">If you already completed your order, you can ignore this email.</div>
+  `);
 }
 
 export async function processDueAbandonedEmails(limit=25){

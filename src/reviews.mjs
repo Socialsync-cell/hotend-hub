@@ -1,10 +1,19 @@
 import crypto from 'node:crypto';
 import {q} from './db.mjs';
-import {sendEmail,brandEmailHeader} from './email.mjs';
+import {sendEmail,brandEmailHeader,wrapHotendEmail} from './email.mjs';
 import {renderAutomationEmail} from './automations.mjs';
 
 function esc(v){
   return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function normalizeEmailImageUrl(value){
+  let url=String(value??'').trim();
+  if(!url)return '';
+  if(url.startsWith('//'))return 'https:'+url;
+  if(url.startsWith('/'))return 'https://hotend.co.nz'+url;
+  if(/^http:\/\//i.test(url))return 'https://'+url.slice(7);
+  return /^https:\/\//i.test(url)?url:'';
 }
 
 function tokenHash(token){
@@ -29,47 +38,37 @@ export async function scheduleReviewForShopifyOrder(shopifyOrderId,delayDays=7){
 }
 
 function reviewItemTableHtml(items){
-  const rows=(items||[]).slice(0,12).map(x=>`
-    <tr>
-      <td valign="top" style="width:23%;padding:10px;border-bottom:1px solid #dce4e3;color:#1c3a52;font-size:9px;font-weight:600;line-height:1.35;word-break:break-word">${esc(x.sku||'-')}</td>
-      <td valign="top" style="width:62%;padding:8px;border-bottom:1px solid #dce4e3">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          ${x.image_url?`<td width="58" valign="top" style="width:58px;padding-right:8px"><img src="${esc(x.image_url)}" width="50" alt="${esc(x.product_title||'Product')}" style="display:block;width:50px;height:50px;object-fit:cover;border:1px solid #e1e7e6;border-radius:5px"></td>`:''}
-          <td valign="top">
-            <div style="color:#1c3a52;font-size:10px;font-weight:700;line-height:1.35">${esc(x.product_title||'Product')}</div>
-            ${x.variant_title?`<div style="color:#3fc2c2;font-size:8px;line-height:1.35;margin-top:3px">${esc(x.variant_title)}</div>`:''}
-          </td>
-        </tr></table>
-      </td>
-      <td valign="top" align="center" style="width:15%;padding:10px 5px;border-bottom:1px solid #dce4e3;color:#1c3a52;font-size:11px;font-weight:800;text-align:center">${Number(x.quantity||1)}</td>
-    </tr>`).join('');
-  if(!rows)return '';
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;table-layout:fixed">
-    <tr>
-      <td style="width:23%;background:#1c3a52;color:#fff;padding:10px;font-size:8px;font-weight:700;text-transform:uppercase">SKU</td>
-      <td style="width:62%;background:#1c3a52;color:#fff;padding:10px;font-size:8px;font-weight:700;text-transform:uppercase">Product</td>
-      <td align="center" style="width:15%;background:#1c3a52;color:#fff;padding:10px 5px;font-size:8px;font-weight:700;text-transform:uppercase;text-align:center">Qty</td>
-    </tr>
-    ${rows}
-  </table>`;
+  return (items||[]).slice(0,12).map(x=>{
+    const imageUrl=normalizeEmailImageUrl(x.image_url);
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;margin:10px 0;background:#ffffff">
+      <tr>
+        ${imageUrl?`<td width="78" valign="middle" style="width:78px;padding:10px"><img src="${esc(imageUrl)}" width="58" height="58" alt="${esc(x.product_title||'Product')}" style="display:block;width:58px;height:58px;object-fit:cover;border:1px solid #e1e7e6;border-radius:6px;background:#f7f9f9"></td>`:''}
+        <td valign="middle" style="padding:12px ${imageUrl?'8px 12px 2px':'12px'}">
+          <div style="color:#1c3a52;font-size:11px;font-weight:800;line-height:1.35">${esc(x.product_title||'Product')}</div>
+          ${x.variant_title?`<div style="color:#20aeb3;font-size:8px;font-weight:700;line-height:1.35;margin-top:4px">${esc(x.variant_title)}</div>`:''}
+          <div style="color:#7c9088;font-size:8px;line-height:1.35;margin-top:5px">SKU: ${esc(x.sku||'-')}</div>
+        </td>
+        <td width="52" valign="middle" align="center" style="width:52px;padding:10px;color:#1c3a52">
+          <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:#7c9088">Qty</div>
+          <div style="font-size:13px;font-weight:900;margin-top:4px">${Number(x.quantity||1)}</div>
+        </td>
+      </tr>
+    </table>`;
+  }).join('');
 }
 
 function reviewEmailHtml({name,orderName,token,items}){
   const base=String(process.env.PUBLIC_BASE_URL||'https://hotend-hub.onrender.com').replace(/\/$/,'');
   const url=base+'/review?token='+encodeURIComponent(token);
   const list=reviewItemTableHtml(items);
-  return `<!doctype html><html><body style="margin:0;background:#fffcf7;font-family:Arial,sans-serif;color:#172033">
-  <div style="max-width:640px;margin:auto;padding:28px 18px">
-    ${brandEmailHeader()}
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px;margin-top:16px">
-      <h1 style="color:#0b2748;margin-top:0">How did your filament go, ${esc(name||'there')}?</h1>
-      <p>We'd value your feedback on order <strong>${esc(orderName||'')}</strong>.</p>
-      ${list}
-      <p>You can also tell us which <strong>materials</strong> or <strong>colours</strong> you would like Hotend to stock next.</p>
-      <p style="margin:26px 0"><a href="${esc(url)}" style="background:#f5b51b;color:#0b2748;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;display:inline-block">Leave a review</a></p>
-      <p style="font-size:13px;color:#667085">Thank you for helping other New Zealand makers choose the right filament.</p>
-    </div>
-  </div></body></html>`;
+  return wrapHotendEmail(`
+    <div style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:9px">How did your filament go, ${esc(name||'there')}?</div>
+    <div style="color:#657d7a;font-size:12px;line-height:1.65;margin-bottom:16px">We'd value your feedback on order <strong>${esc(orderName||'')}</strong>.</div>
+    ${list}
+    <div style="background:#f5f7f7;border:1px solid #d7dfdf;border-left:5px solid #3fc2c2;padding:12px 14px;margin-top:16px;color:#718581;font-size:10px;line-height:1.55">You can also tell us which <strong style="color:#1c3a52">materials</strong> or <strong style="color:#1c3a52">colours</strong> you would like Hotend to stock next.</div>
+    <p style="margin:24px 0;text-align:center"><a href="${esc(url)}" style="display:inline-block;background:#1c3a52;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.5px">LEAVE A REVIEW</a></p>
+    <div style="color:#718581;font-size:9px;line-height:1.55">Thank you for helping other New Zealand makers choose the right filament.</div>
+  `);
 }
 
 export async function processDueReviewRequests(limit=25){
