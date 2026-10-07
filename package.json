@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node src/server.mjs"
+    "start": "node --import ./src/behavior_bootstrap.mjs src/server.mjs"
   },
   "dependencies": {
     "pg": "^8.23.0",
