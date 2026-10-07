@@ -69,6 +69,15 @@ export function defaultAutomationEditor(key){
       <div style="color:#1c3a52;font-size:10px;font-weight:800;margin-bottom:4px">Thank you for supporting a Kiwi business.</div>
       <div style="color:#7c9088;font-size:8px">Hotend • 3D Printing Filament Supplies</div>
       <div style="color:#8b9a97;font-size:7px;line-height:1.45;margin-top:4px">GST Number: 149-065-458 &nbsp;•&nbsp; NZ Business Number: 9429053775979</div>
+      <div style="color:#7c9088;font-size:7.5px;line-height:1.6;margin-top:8px">
+        <a href="https://hotend.co.nz/policies/privacy-policy" style="color:#7c9088;text-decoration:none">Privacy Policy</a>
+        &nbsp;•&nbsp;
+        <a href="https://hotend.co.nz/policies/refund-policy" style="color:#7c9088;text-decoration:none">Refund Policy</a>
+        &nbsp;•&nbsp;
+        <a href="https://hotend.co.nz/policies/shipping-policy" style="color:#7c9088;text-decoration:none">Shipping Policy</a>
+        &nbsp;•&nbsp;
+        <a href="https://hotend.co.nz/policies/terms-of-service" style="color:#7c9088;text-decoration:none">Terms of Service</a>
+      </div>
     </td></tr>
     <tr><td align="center" style="background:#1c3a52;color:#ffffff;padding:8px;font-size:8px;font-weight:700;letter-spacing:.7px">BRING IDEAS TO LIFE • TEAM HOTEND</td></tr>
   </table></td></tr></table></td></tr></table></body></html>`;

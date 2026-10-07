@@ -163,28 +163,24 @@ export async function sendWelcomeStory(customerId){
 
   const name=esc(customer.first_name||'there');
   const fallbackSubject='Welcome to Hotend — bring your ideas to life';
-  const fallbackHtml=`<!doctype html>
-<html><body style="margin:0;background:#fffcf7;font-family:Arial,sans-serif;color:#172033">
-  <div style="max-width:640px;margin:0 auto;padding:30px 20px">
-    ${brandEmailHeader()}
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px;margin-top:16px">
-      <h1 style="color:#0b2748;margin-top:0">Hi ${name}, welcome to Hotend.</h1>
-      <p>Hotend was built for makers who want reliable filament, useful local support and faster access to the materials that keep projects moving.</p>
-      <p>We focus on practical filament choices for everyday printing, clear product information, and a growing range of colours and materials for New Zealand makers.</p>
-      <h2 style="color:#0b2748">Why customers choose Hotend</h2>
-      <ul style="line-height:1.7">
-        <li>NZ-owned service and local support.</li>
-        <li>A growing filament range for hobby, functional and creative prints.</li>
-        <li>Fast local fulfilment options around Waikato.</li>
-        <li>Real customer feedback and product reviews built into the Hotend experience.</li>
-      </ul>
-      <p style="margin:26px 0">
-        <a href="https://hotend.co.nz/collections/all" style="background:#f5b51b;color:#0b2748;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;display:inline-block">Shop Hotend filament</a>
-      </p>
-      <p style="font-size:13px;color:#667085">You are receiving this because you subscribed to Hotend marketing updates. You can change your marketing preferences through Hotend or Shopify customer communications.</p>
+  const fallbackHtml=wrapHotendEmail(`
+    <div style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:9px">Hi ${name}, welcome to Hotend.</div>
+    <div style="color:#657d7a;font-size:12px;line-height:1.65;margin-bottom:16px">Hotend was built for makers who want reliable filament, useful local support and faster access to the materials that keep projects moving.</div>
+    <div style="color:#5f7774;font-size:11px;line-height:1.72">
+      <p style="margin:12px 0">We focus on practical filament choices for everyday printing, clear product information, and a growing range of colours and materials for New Zealand makers.</p>
+      <div style="background:#f5f7f7;border:1px solid #d7dfdf;border-left:5px solid #3fc2c2;padding:12px 14px;margin:16px 0">
+        <div style="color:#1c3a52;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.45px;margin-bottom:6px">Why customers choose Hotend</div>
+        <div style="color:#718581;font-size:10px;line-height:1.7">
+          NZ-owned service and local support.<br>
+          A growing filament range for hobby, functional and creative prints.<br>
+          Fast local fulfilment options around Waikato.<br>
+          Real customer feedback and product reviews built into the Hotend experience.
+        </div>
+      </div>
     </div>
-  </div>
-</body></html>`;
+    <p style="margin:24px 0;text-align:center"><a href="https://hotend.co.nz/collections/all" style="display:inline-block;background:#1c3a52;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.5px">SHOP HOTEND FILAMENT</a></p>
+    <div style="color:#718581;font-size:9px;line-height:1.55">You are receiving this because you subscribed to Hotend marketing emails.</div>
+  `);
   const rendered=await renderAutomationEmail('welcome-story',{
     fallbackSubject,
     fallbackHtml,
@@ -279,12 +275,7 @@ export async function recentEmailDeliveries(limit=50){
 
 export function emailPreviewHtml(type='welcome'){
   const t=String(type||'welcome').toLowerCase();
-  const shell=(content)=>`<!doctype html><html><body style="margin:0;background:#fffcf7;font-family:Arial,sans-serif;color:#172033">
-    <div style="max-width:640px;margin:0 auto;padding:24px 18px">
-      ${brandEmailHeader()}
-      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:26px;margin-top:10px">${content}</div>
-    </div>
-  </body></html>`;
+  const shell=(content)=>wrapHotendEmail(content);
 
   if(t==='discount'){
     return shell(`
