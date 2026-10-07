@@ -7,6 +7,16 @@ function esc(v){
   return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function normalizeEmailImageUrl(value){
+  let url=String(value??'').trim();
+  if(!url)return '';
+  if(url.startsWith('//'))return 'https:'+url;
+  if(url.startsWith('/'))return 'https://hotend.co.nz'+url;
+  if(/^http:\/\//i.test(url))return 'https://'+url.slice(7);
+  if(/^https:\/\//i.test(url))return url;
+  return '';
+}
+
 function verifyProxy(url){
   const secret=process.env.SHOPIFY_CLIENT_SECRET||'';
   if(!secret)return false;
@@ -145,10 +155,20 @@ async function recordProductView(data){
 }
 
 function productsHtml(products){
-  return products.map(p=>`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;margin:10px 0;background:#fff"><tr>
-    ${p.image_url?`<td width="82" valign="middle" style="width:82px;padding:10px"><img src="${esc(p.image_url)}" width="62" height="62" alt="" style="display:block;width:62px;height:62px;object-fit:cover;border-radius:6px"></td>`:''}
-    <td valign="middle" style="padding:12px"><div style="font-size:12px;font-weight:800;color:#1c3a52;line-height:1.35">${esc(p.product_title)}</div><div style="margin-top:8px"><a href="${esc(p.product_url)}" style="color:#0b5260;font-size:10px;font-weight:800;text-decoration:none">VIEW PRODUCT →</a></div></td>
-  </tr></table>`).join('');
+  return products.map(p=>{
+    const imageUrl=normalizeEmailImageUrl(p.image_url);
+    const productUrl=String(p.product_url||'').trim();
+    const title=String(p.product_title||'Hotend product').trim()||'Hotend product';
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #dce4e3;margin:10px 0;background:#ffffff">
+      <tr>
+        ${imageUrl?`<td width="88" valign="middle" style="width:88px;padding:10px"><a href="${esc(productUrl)}" style="text-decoration:none"><img src="${esc(imageUrl)}" width="68" height="68" alt="${esc(title)}" style="display:block;width:68px;height:68px;object-fit:cover;border:1px solid #e1e7e6;border-radius:6px;background:#f7f9f9"></a></td>`:''}
+        <td valign="middle" style="padding:12px ${imageUrl?'12px 12px 2px':'12px'}">
+          <div style="font-size:12px;font-weight:800;color:#1c3a52;line-height:1.35">${esc(title)}</div>
+          <div style="margin-top:8px"><a href="${esc(productUrl)}" style="color:#0b5260;font-size:10px;font-weight:800;text-decoration:none">VIEW PRODUCT →</a></div>
+        </td>
+      </tr>
+    </table>`;
+  }).join('');
 }
 
 function applyTokens(value,vars){
@@ -275,6 +295,10 @@ const behaviorClient=`;(function(){
         if(!p)return;
         var img=p.featured_image||'';
         if(img&&typeof img==='object')img=img.url||img.src||'';
+        img=String(img||'').trim();
+        if(img.indexOf('//')===0)img='https:'+img;
+        else if(img.charAt(0)==='/')img=location.origin+img;
+        else if(/^http:\/\//i.test(img))img=img.replace(/^http:/i,'https:');
         return fetch('/apps/hotend-hub/behavior',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           visitor_id:visitor,email:email,product_id:String(p.id||''),product_handle:handle,
           product_title:String(p.title||document.title||'Product'),product_url:location.origin+'/products/'+handle,image_url:String(img||'')

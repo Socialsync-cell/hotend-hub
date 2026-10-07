@@ -15,24 +15,19 @@ export function brandEmailHeader(){
   const logo=String(process.env.HOTEND_LOGO_URL||'').trim();
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#ffffff">
     <tr>
-      <td style="padding:18px 28px 10px">
+      <td style="padding:18px 28px 12px">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td width="82" valign="middle" style="width:82px">
-              ${logo?`<img src="${esc(logo)}" alt="Hotend Filament Supplies" width="64" style="display:block;width:64px;max-width:64px;height:auto">`:`<div style="font-size:18px;font-weight:800;color:#1c3a52">HOTEND</div>`}
+            <td width="84" valign="middle" style="width:84px;padding-right:16px">
+              ${logo?`<img src="${esc(logo)}" alt="Hotend Filament Supplies" width="68" style="display:block;width:68px;max-width:68px;height:auto">`:`<div style="font-size:18px;font-weight:900;color:#1c3a52;letter-spacing:.7px">HOTEND</div>`}
             </td>
-            <td valign="middle" align="center" style="padding:0 14px;border-left:1px solid #e3ecec;border-right:1px solid #e3ecec">
-              <div style="color:#20aeb3;font-size:11px;font-weight:800;letter-spacing:2.1px;text-transform:uppercase;line-height:1.2">BRING IDEAS TO LIFE</div>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:7px auto 0">
-                <tr>
-                  <td style="color:#1c3a52;font-size:8px;font-weight:700;padding-right:12px">✉ info@hotend.co.nz</td>
-                  <td style="color:#1c3a52;font-size:8px;font-weight:700">◉ www.hotend.co.nz</td>
-                </tr>
-              </table>
-            </td>
-            <td width="118" valign="middle" align="right" style="width:118px;padding-left:12px">
-              <div style="color:#1c3a52;font-size:15px;font-weight:800;letter-spacing:.6px">HOTEND</div>
-              <div style="color:#7c9088;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Filament Supplies</div>
+            <td valign="middle" style="padding-left:16px;border-left:1px solid #e3ecec">
+              <div style="color:#1c3a52;font-size:16px;font-weight:900;letter-spacing:.8px;line-height:1.1">HOTEND</div>
+              <div style="color:#7c9088;font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-top:3px">Filament Supplies</div>
+              <div style="color:#20aeb3;font-size:10.5px;font-weight:800;letter-spacing:2px;text-transform:uppercase;line-height:1.2;margin-top:8px">BRING IDEAS TO LIFE</div>
+              <div style="color:#526663;font-size:8px;font-weight:700;line-height:1.5;margin-top:6px">
+                info@hotend.co.nz &nbsp;&nbsp;•&nbsp;&nbsp; hotend.co.nz
+              </div>
             </td>
           </tr>
         </table>
