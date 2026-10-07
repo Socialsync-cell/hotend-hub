@@ -2,11 +2,28 @@ import crypto from 'node:crypto';
 import {closeChatNowByReference} from './chat_lifecycle.mjs';
 import {q} from './db.mjs';
 import {subscribeMarketingCustomer} from './shopify.mjs';
-import {sendSignupDiscountEmail,sendSignupOwnerNotification} from './email.mjs';
+import {sendSignupDiscountEmail,sendSignupOwnerNotification,sendWelcomeStory} from './email.mjs';
 import {getChatSettings,generateAiReply,chatIntegrationStatus} from './ai_chat.mjs';
 import {sendStaffChatMessage} from './whatsapp.mjs';
 import {submitDirectProductReview} from './reviews.mjs';
 import {recordStorefrontCart} from './abandoned.mjs';
+import {automationRule} from './automations.mjs';
+
+async function sendWelcomeStoryIfEnabled(customerId){
+  if(!customerId)return {ok:false,skipped:'no_customer'};
+  try{
+    const rule=await automationRule('welcome-story');
+    if(!rule?.enabled)return {ok:true,skipped:'disabled'};
+    const result=await sendWelcomeStory(customerId);
+    if(!result.ok&&!result.skipped){
+      console.error('Welcome story email failed:',result.error||'unknown');
+    }
+    return result;
+  }catch(e){
+    console.error('Welcome story email failed:',e.message);
+    return {ok:false,error:e.message};
+  }
+}
 
 export function verifyShopifyProxy(url){
   const secret=process.env.SHOPIFY_CLIENT_SECRET||'';
@@ -257,6 +274,10 @@ export async function proxyChat(req,url,readBody){
     }
   }
 
+  if(email&&data.marketing_opt_in&&customerId){
+    setImmediate(()=>sendWelcomeStoryIfEnabled(customerId));
+  }
+
   let session=null;
   if(existingReference){
     session=(await q(`SELECT id,reference,closed_at,needs_human FROM chat_sessions WHERE reference=$1 LIMIT 1`,[existingReference])).rows[0]||null;
@@ -372,6 +393,8 @@ export async function proxySubscribe(req,url,readBody){
       marketing_opt_in_level='SINGLE_OPT_IN',
       updated_at=NOW()
     RETURNING id`,[shopifyId,email,firstName||null,lastName||null])).rows[0];
+
+  setImmediate(()=>sendWelcomeStoryIfEnabled(up.id));
 
   const discountCode=effectiveDiscountCode;
   let emailResult={ok:false,skipped:'no_discount_code'};
