@@ -298,7 +298,7 @@ const behaviorClient=`;(function(){
         img=String(img||'').trim();
         if(img.indexOf('//')===0)img='https:'+img;
         else if(img.charAt(0)==='/')img=location.origin+img;
-        else if(/^http:\/\//i.test(img))img=img.replace(/^http:/i,'https:');
+        else if(img.slice(0,7).toLowerCase()==='http://')img=img.replace(/^http:/i,'https:');
         return fetch('/apps/hotend-hub/behavior',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           visitor_id:visitor,email:email,product_id:String(p.id||''),product_handle:handle,
           product_title:String(p.title||document.title||'Product'),product_url:location.origin+'/products/'+handle,image_url:String(img||'')
