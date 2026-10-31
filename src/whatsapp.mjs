@@ -99,19 +99,21 @@ export async function sendStaffEscalation(sessionId){
     session.email||'No email'
   ].join('\n');
 
-  let sent=await sendWhatsAppMessage(staff,intro);
-
-  if(!sent.ok&&settings.whatsapp_template_name){
-    sent=await graphSend({
-      messaging_product:'whatsapp',
-      to:staff,
-      type:'template',
-      template:{
-        name:String(settings.whatsapp_template_name),
-        language:{code:String(settings.whatsapp_template_language||'en')}
-      }
-    });
-  }
+  // A template can start a business-initiated conversation outside the 24-hour window.
+  // A successful text API response alone does not guarantee delivery.
+  const templateName=String(settings.whatsapp_template_name||'').trim();
+  const sendTemplate=()=>graphSend({
+    messaging_product:'whatsapp',
+    to:staff,
+    type:'template',
+    template:{
+      name:templateName,
+      language:{code:String(settings.whatsapp_template_language||'en')}
+    }
+  });
+  // Never fall back from a rejected template to unapproved free-form text.
+  let sent=templateName?await sendTemplate():await sendWhatsAppMessage(staff,intro);
+  if(!templateName)console.warn('WhatsApp escalation template not configured',{sessionId:session.id});
 
   if(sent.ok){
     await q(`INSERT INTO whatsapp_staff_bridges(session_id,outbound_message_id,staff_phone)
@@ -211,7 +213,12 @@ export async function processWhatsAppWebhook(rawBody){
         if(saved.rows[0]?.session_id)statusesMatched++;
         if(state==='failed'){
           statusesFailed++;
-          console.error('WhatsApp delivery failed',{sessionId:saved.rows[0]?.session_id||null,code,detail});
+          const failedSessionId=saved.rows[0]?.session_id||null;
+          console.error('WhatsApp delivery failed',{sessionId:failedSessionId,code,detail});
+          if(failedSessionId){
+            await q(`UPDATE chat_sessions SET whatsapp_notify_error=$2
+              WHERE id=$1`,[failedSessionId,(code?code+': ':'')+(detail||'WhatsApp delivery failed')]);
+          }
         }
       }
     }
