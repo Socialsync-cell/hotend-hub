@@ -479,3 +479,18 @@ UPDATE automation_rules
 SET config = config || '{"cart_idle_minutes":120}'::jsonb
 WHERE key='abandoned-cart'
   AND NOT (config ? 'cart_idle_minutes');
+
+
+-- Record WhatsApp Cloud API status callbacks for staff chat handovers.
+CREATE TABLE IF NOT EXISTS whatsapp_delivery_events (
+  id BIGSERIAL PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  session_id BIGINT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+  status TEXT NOT NULL,
+  status_at TIMESTAMPTZ,
+  error_code TEXT,
+  error_message TEXT,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(message_id,status)
+);
+CREATE INDEX IF NOT EXISTS whatsapp_delivery_events_session_idx ON whatsapp_delivery_events(session_id,received_at DESC);
