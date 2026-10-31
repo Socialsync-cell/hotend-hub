@@ -94,9 +94,17 @@ export async function sendStaffEscalation(sessionId){
   if(!session)return {ok:false,skipped:'chat_not_found'};
 
   const firstName=String(session.first_name||'Customer').trim()||'Customer';
+  const transcriptRows=(await q(`SELECT sender,message FROM chat_messages
+    WHERE session_id=$1 ORDER BY id ASC`,[session.id])).rows;
+  const transcript=transcriptRows.map(row=>`[${row.sender}] ${String(row.message||'')}`).join('\n\n');
   const intro=[
-    firstName,
-    session.email||'No email'
+    'Hotend website chat — human handover',
+    'Chat: '+session.reference,
+    'Customer: '+firstName,
+    'Email: '+(session.email||'No email'),
+    '',
+    'Full conversation:',
+    transcript||'(No messages)'
   ].join('\n');
 
   // A template can start a business-initiated conversation outside the 24-hour window.
@@ -112,12 +120,34 @@ export async function sendStaffEscalation(sessionId){
     }
   });
   // Never fall back from a rejected template to unapproved free-form text.
-  let sent=templateName?await sendTemplate():await sendWhatsAppMessage(staff,intro);
-  if(!templateName)console.warn('WhatsApp escalation template not configured',{sessionId:session.id});
+  let sent;
+  if(templateName){
+    // Approved templates have fixed Meta-reviewed content. Do not send unapproved
+    // transcript text outside the customer-service window.
+    sent=await sendTemplate();
+  }else{
+    console.warn('WhatsApp escalation template not configured',{sessionId:session.id});
+    // Preserve the complete conversation, using several WhatsApp messages if needed.
+    // Split at code-point boundaries so no section is silently truncated.
+    const characters=Array.from(intro);
+    const chunks=[];
+    for(let offset=0;offset<characters.length;offset+=3500){
+      chunks.push(characters.slice(offset,offset+3500).join(''));
+    }
+    for(let index=0;index<chunks.length;index++){
+      const text=chunks.length===1?chunks[index]:`Hotend handover ${session.reference} (part ${index+1}/${chunks.length})\n${chunks[index]}`;
+      sent=await sendWhatsAppMessage(staff,text);
+      if(!sent.ok)break;
+      await q(`INSERT INTO whatsapp_staff_bridges(session_id,outbound_message_id,staff_phone)
+        VALUES($1,$2,$3)`,[session.id,sent.id||null,staff]);
+    }
+  }
 
   if(sent.ok){
-    await q(`INSERT INTO whatsapp_staff_bridges(session_id,outbound_message_id,staff_phone)
-      VALUES($1,$2,$3)`,[session.id,sent.id||null,staff]);
+    if(templateName){
+      await q(`INSERT INTO whatsapp_staff_bridges(session_id,outbound_message_id,staff_phone)
+        VALUES($1,$2,$3)`,[session.id,sent.id||null,staff]);
+    }
     await q(`UPDATE chat_sessions SET whatsapp_notified_at=NOW(),whatsapp_notify_error=NULL WHERE id=$1`,[session.id]);
   }else{
     const err=String(sent.error||sent.skipped||'WhatsApp escalation failed').slice(0,1200);
