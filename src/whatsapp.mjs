@@ -188,6 +188,36 @@ export async function processWhatsAppWebhook(rawBody){
   try{body=JSON.parse(rawBody.toString('utf8')||'{}')}
   catch{return {ok:false,error:'INVALID_JSON'};}
 
+  // Meta delivery receipts are status events, not inbound chat messages.
+  let statusesSeen=0, statusesMatched=0, statusesFailed=0;
+  for(const entry of body?.entry||[]){
+    for(const change of entry?.changes||[]){
+      for(const status of change?.value?.statuses||[]){
+        const messageId=String(status?.id||'').trim();
+        const state=String(status?.status||'').trim().toLowerCase();
+        if(!messageId||!['sent','delivered','read','failed'].includes(state))continue;
+        statusesSeen++;
+        const issue=Array.isArray(status.errors)?status.errors[0]:null;
+        const code=issue?.code==null?null:String(issue.code).slice(0,80);
+        const detail=issue?String(issue.title||issue.message||'WhatsApp delivery failed').slice(0,500):null;
+        const at=Number(status.timestamp);
+        const statusAt=Number.isFinite(at)&&at>0?new Date(at*1000).toISOString():null;
+        const saved=await q(`INSERT INTO whatsapp_delivery_events(message_id,session_id,status,status_at,error_code,error_message)
+          VALUES($1,(SELECT session_id FROM whatsapp_staff_bridges WHERE outbound_message_id=$1 ORDER BY id DESC LIMIT 1),$2,$3,$4,$5)
+          ON CONFLICT(message_id,status) DO UPDATE SET status_at=COALESCE(EXCLUDED.status_at,whatsapp_delivery_events.status_at),
+            session_id=COALESCE(EXCLUDED.session_id,whatsapp_delivery_events.session_id),
+            error_code=EXCLUDED.error_code,error_message=EXCLUDED.error_message
+          RETURNING session_id`,[messageId,state,statusAt,code,detail]);
+        if(saved.rows[0]?.session_id)statusesMatched++;
+        if(state==='failed'){
+          statusesFailed++;
+          console.error('WhatsApp delivery failed',{sessionId:saved.rows[0]?.session_id||null,code,detail});
+        }
+      }
+    }
+  }
+  if(statusesSeen)console.log('WhatsApp delivery statuses',{seen:statusesSeen,matched:statusesMatched,failed:statusesFailed});
+
   const messages=inboundMessages(body);
   const settings=(await q(`SELECT whatsapp_staff_phone,whatsapp_phone FROM chat_settings WHERE id=1 LIMIT 1`)).rows[0]||{};
   const staff=digits(settings.whatsapp_staff_phone||settings.whatsapp_phone||process.env.WHATSAPP_STAFF_PHONE);
