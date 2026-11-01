@@ -202,7 +202,7 @@ async function resolveWebsiteSessionForStaffMessage(m,staff){
 
   // An unquoted reply must name exactly one conversation. No implicit
   // "most recent chat" fallback: that risks leaking replies to a customer.
-  const refs=[...new Set((String(m.text||'').toUpperCase().match(/\\bCHAT-[A-Z0-9]+\\b/g)||[]))];
+  const refs=[...new Set((String(m.text||'').toUpperCase().match(/\bCHAT-[A-Z0-9]+\b/g)||[]))];
   if(refs.length!==1)return null;
   const matches=(await q(`SELECT s.id AS session_id FROM chat_sessions s
     WHERE s.reference=$1 AND s.closed_at IS NULL
