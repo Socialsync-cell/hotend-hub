@@ -189,30 +189,26 @@ export async function sendStaffChatMessage(sessionId){
 }
 
 async function resolveWebsiteSessionForStaffMessage(m,staff){
+  // A quoted WhatsApp message ID always takes precedence. Never route a quoted
+  // reply elsewhere when its context cannot be verified.
   if(m.contextId){
-    const bridge=(await q(`SELECT session_id FROM whatsapp_staff_bridges
-      WHERE outbound_message_id=$1 AND staff_phone=$2
-      ORDER BY id DESC LIMIT 1`,[m.contextId,staff])).rows[0];
-    if(bridge)return bridge.session_id;
+    const matches=(await q(`SELECT DISTINCT b.session_id
+      FROM whatsapp_staff_bridges b
+      JOIN chat_sessions s ON s.id=b.session_id
+      WHERE b.outbound_message_id=$1 AND b.staff_phone=$2
+        AND s.closed_at IS NULL`,[m.contextId,staff])).rows;
+    return matches.length===1?matches[0].session_id:null;
   }
 
-  const refMatch=m.text.match(/\bCHAT-[A-Z0-9]+\b/i);
-  if(refMatch){
-    const s=(await q(`SELECT id FROM chat_sessions WHERE reference=$1 LIMIT 1`,[refMatch[0].toUpperCase()])).rows[0];
-    if(s)return s.id;
-  }
-
-  const recent=(await q(`SELECT b.session_id
-    FROM whatsapp_staff_bridges b
-    JOIN chat_sessions s ON s.id=b.session_id
-    WHERE b.staff_phone=$1
-      AND b.created_at > NOW()-INTERVAL '24 hours'
-      AND s.closed_at IS NULL
-    ORDER BY COALESCE(b.last_staff_reply_at,b.created_at) DESC,b.id DESC
-    LIMIT 1`,[staff])).rows[0];
-  if(recent)return recent.session_id;
-
-  return null;
+  // An unquoted reply must name exactly one conversation. No implicit
+  // "most recent chat" fallback: that risks leaking replies to a customer.
+  const refs=[...new Set((String(m.text||'').toUpperCase().match(/\\bCHAT-[A-Z0-9]+\\b/g)||[]))];
+  if(refs.length!==1)return null;
+  const matches=(await q(`SELECT s.id AS session_id FROM chat_sessions s
+    WHERE s.reference=$1 AND s.closed_at IS NULL
+      AND EXISTS (SELECT 1 FROM whatsapp_staff_bridges b
+        WHERE b.session_id=s.id AND b.staff_phone=$2)`,[refs[0],staff])).rows;
+  return matches.length===1?matches[0].session_id:null;
 }
 
 export async function processWhatsAppWebhook(rawBody){
